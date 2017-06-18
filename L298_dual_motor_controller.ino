@@ -1,88 +1,177 @@
+ /******************************************************************************
+Code based on:
+L298 motor driver:
+https://tronixlabs.com.au/news/tutorial-l298n-dual-motor-controller-module-2a-and-arduino/
+Optical tachometer:
+https://learn.sparkfun.com/tutorials/qrd1114-optical-detector-hookup-guide?_ga=1.57060067.834043405.1459523277
+www.instructables.com/id/Arduino-Based-Optical-Tachometer/
+Arduino Pins
+10 --> L298, pin ENA
+9 --> L298, pin IN1
+8 --> L298, pin IN2
+2 --> Photodetector Collector pin
+******************************************************************************/
+float EnRes = 12;
+
+// the time (in mS) increment to record the encoder output for before outputting to serial 
+int TachoIncrement = 2000;
+
+const float pi = 3.142;
+
 // connect motor controller pins to Arduino digital pins
 // motor one
-int enA = 5;
-int in1 = 7;
-int in2 = 6;
-// motor two
-int enB = 8;
-int in3 = 10;
-int in4 = 9;
+int enA = 10;
+int in1 = 9;
+int in2 = 8;
 
-void setup()
+unsigned long count;
+unsigned long time;
+unsigned long timeold;
+
+float timer;    
+float rps;
+float radps;
+
+int PWM_signal;
+int PWM_min;
+int PWM_max;
+
+  void setup()
+   {   
+     Serial.begin(9600);
+     //Interrupt 0 is digital pin 2, so that is where the IR detector is connected
+     //Triggers on FALLING (change from HIGH to LOW)
+     attachInterrupt(0, rps_fun, FALLING);
+  
+     count = 0;
+     timeold = 0;
+     
+     // set all the motor control pins to outputs
+    pinMode(enA, OUTPUT);
+    pinMode(in1, OUTPUT);
+    pinMode(in2, OUTPUT);
+    
+   Serial.print("PWM");
+   Serial.print("\t");
+   Serial.print("rps");
+   Serial.print("\t");
+   Serial.println("radps");
+ }  
+  
+ void loop()
+ { 
+//  demoOne(255, "FWD");
+//  delay(1000);
+  demoTwo(175, 255, "FWD"); 
+  delay(3000);
+ }
+
+void rps_fun()
+ {
+   count +=1;      
+ }
+ 
+ void tachometer(int PWM_val)
+ {
+   // reset the counter and timer in case the speed has changed since the last count
+   timeold = millis();
+   count = 0;   
+   for (int j = 0; j < 5; j++)    
+   {
+      // the delay determines the total recording time
+      delay(TachoIncrement);    
+      
+      // don't process interrupts during calculations
+      detachInterrupt(0);  
+    
+      // calculate the rotational speed  
+      time = millis();
+      timer = float(time - timeold);
+      rps = 1000*count/(EnRes * timer); 
+      radps = 2*pi*1000*count/(EnRes * timer); 
+      
+      // reset the counter and timer to begin the next increment
+      timeold = millis();   
+      count = 0;   
+      
+      // print everything
+
+      Serial.print(PWM_val);
+      Serial.print("\t");
+      Serial.print(rps);
+      Serial.print("\t");
+      Serial.println(radps);
+      
+      //Restart the interrupt processing
+      attachInterrupt(0, rps_fun, FALLING);
+      
+    }
+
+}
+ 
+ 
+void demoOne(int PWM_signal, String motor_direction)  
 {
-// set all the motor control pins to outputs
-pinMode(enA, OUTPUT);
-pinMode(enB, OUTPUT);
-pinMode(in1, OUTPUT);
-pinMode(in2, OUTPUT);
-pinMode(in3, OUTPUT);
-pinMode(in4, OUTPUT);
+// run the motors at a fixed speed
+// PWM_signal sets speed out of possible range 0~255
+// motor_direction takes "FWD" or "REV" to determine direction
+
+// turn on motor
+  if(motor_direction == "FWD")
+  {
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+  }
+  
+  else
+  {
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+  }
+
+  analogWrite(enA, PWM_signal);  
+  tachometer(PWM_signal);
+
 }
 
-void demoOne()
-{
-// this function will run the motors in both directions at a fixed speed
-// turn on motor A
-digitalWrite(in1, HIGH);
-digitalWrite(in2, LOW);
-// set speed to 200 out of possible range 0~255
-analogWrite(enA, 250);
-// turn on motor B
-digitalWrite(in3, HIGH);
-digitalWrite(in4, LOW);
-// set speed to 200 out of possible range 0~255
-analogWrite(enB, 250);
-delay(2000);
-// now change motor directions
-//digitalWrite(in1, LOW);
-//digitalWrite(in2, HIGH);
-//digitalWrite(in3, LOW);
-//digitalWrite(in4, HIGH);
-//delay(2000);
-//// now turn off motors
-//digitalWrite(in1, LOW);
-//digitalWrite(in2, LOW);
-//digitalWrite(in3, LOW);
-//digitalWrite(in4, LOW);
-}
-
-void demoTwo()
+void demoTwo(int PWM_min, int PWM_max, String motor_direction)
 {
 // this function will run the motors across the range of possible speeds
 // note that maximum speed is determined by the motor itself and the operating voltage
 // the PWM values sent by analogWrite() are fractions of the maximum speed possible
 // by your hardware
-// turn on motors
-digitalWrite(in1, LOW);
-digitalWrite(in2, HIGH);
-digitalWrite(in3, LOW);
-digitalWrite(in4, HIGH);
-// accelerate from zero to maximum speed
-for (int i = 0; i < 256; i++)
-{
-analogWrite(enA, i);
-analogWrite(enB, i);
-delay(20);
-}
-// decelerate from maximum speed to zero
-for (int i = 255; i >= 0; --i)
-//for (int i = 255; i >= 0; --i)
-{
-analogWrite(enA, i);
-analogWrite(enB, i);
-delay(20);
-}
-// now turn off motors
-digitalWrite(in1, LOW);
-digitalWrite(in2, LOW);
-digitalWrite(in3, LOW);
-digitalWrite(in4, LOW);
-}
 
-void loop()
+// turn on motor
+  if(motor_direction == "FWD")
+  {
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+  }
+  
+  else
+  {
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+  }
+  
+  // accelerate from zero to maximum speed
+  for (int i = PWM_min; i < PWM_max; i = i + 5)  
+  {
+    analogWrite(enA, i);
+    tachometer(i);
+  }
+  // decelerate from maximum speed to zero
+  for (int i = PWM_max; i >= PWM_min; i = i - 5)
+  {
+    analogWrite(enA, i);  
+    tachometer(i);
+  }  
+  }
+  
+
+void demoThree()
 {
-demoOne();
-delay(1000);
-//demoTwo();
-//delay(1000);
+  // now turn off motors
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, LOW);
 }
